@@ -1,0 +1,255 @@
+import os
+import random
+import time
+import tkinter as tk
+from tkinter import scrolledtext, messagebox, ttk, filedialog
+from PIL import Image, ImageTk
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+from colorama import Fore, init
+import webbrowser
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from fpdf import FPDF
+from openai import OpenAI
+
+# Initialize colorama
+init(autoreset=True)
+
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"))
+
+class MentalHealthAIBot:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("AI Mental Health Companion Pro")
+        self.root.geometry("1200x800")
+        self.style = ttk.Style(theme='minty')
+        self.depression_score = 0
+        self.current_question = 0
+        self.diagnosis_active = False
+        self.user_responses = []
+        
+        # Hospital Database (Greater Noida)
+        self.hospitals = [
+            {
+                "name": "Fortis Hospital",
+                "address": "B-22, Sector 62, Gautam Budh Nagar, Greater Noida",
+                "phone": "0120-240-2100",
+                "specialty": "Psychiatry & Mental Health"
+            },
+            {
+                "name": "Kailash Hospital",
+                "address": "Gamma-I, Greater Noida, Uttar Pradesh 201310",
+                "phone": "0120-232-6021",
+                "specialty": "Mental Health Services"
+            },
+            {
+                "name": "Sharda Hospital",
+                "address": "Plot No. 32-34, Knowledge Park III, Greater Noida",
+                "phone": "0120-232-4100",
+                "specialty": "Psychiatric Care"
+            }
+        ]
+
+        # Configure style
+        self.style.configure('TFrame', background='#f0f8ff')
+        self.style.configure('TButton', font=('Arial', 12), width=15)
+        self.style.configure('TLabel', font=('Arial', 12), background='#f0f8ff')
+        
+        # GUI Setup
+        self.create_widgets()
+        self.show_typing_indicator("Welcome to Mental Health Companion Pro! 🤖\nHow can I assist you today?")
+        
+        # Diagnosis questions
+        self.diagnosis_questions = [
+            "How often do you feel sad or hopeless? (1: Never - 5: Always)",
+            "How would you rate your sleep quality? (1: Excellent - 5: Very Poor)",
+            "How is your appetite recently? (1: Normal - 5: No Appetite)",
+            "Do you have trouble concentrating? (1: Never - 5: Always)",
+            "How often do you feel fatigued? (1: Never - 5: Always)"
+        ]
+        
+        self.healing_music = [
+            {"title": "Weightless", "url": "https://youtu.be/UfcAVejslrU"},
+            {"title": "Clair de Lune", "url": "https://youtu.be/CvFH_6DNRCY"}
+        ]
+
+    def create_widgets(self):
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+
+        # Header with logo
+        header_frame = ttk.Frame(main_frame)
+        header_frame.pack(fill=tk.X, pady=10)
+        
+        self.logo = self.load_image("🧠", size=40)
+        ttk.Label(header_frame, image=self.logo).pack(side=tk.LEFT, padx=10)
+        ttk.Label(header_frame, text="Mental Health Companion Pro", 
+                 font=('Arial', 18, 'bold')).pack(side=tk.LEFT)
+        
+        # Visualization Frame
+        self.viz_frame = ttk.Frame(main_frame)
+        self.viz_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        # Chat history
+        self.chat_history = scrolledtext.ScrolledText(
+            main_frame, 
+            wrap=tk.WORD, 
+            state='disabled',
+            font=('Arial', 12),
+            background='#ffffff',
+            padx=15,
+            pady=15
+        )
+        self.chat_history.pack(fill=tk.BOTH, expand=True, pady=10)
+
+        # Input area
+        input_frame = ttk.Frame(main_frame)
+        input_frame.pack(fill=tk.X, pady=10)
+        
+        self.user_input = ttk.Entry(
+            input_frame, 
+            font=('Arial', 14),
+            bootstyle='primary'
+        )
+        self.user_input.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.user_input.bind("<Return>", self.process_input)
+        
+        ttk.Button(
+            input_frame, 
+            text="Send", 
+            command=self.process_input,
+            bootstyle='success'
+        ).pack(side=tk.LEFT, padx=5)
+
+        # Action buttons
+        self.create_action_buttons(main_frame)
+
+    def create_action_buttons(self, parent):
+        action_frame = ttk.Frame(parent)
+        action_frame.pack(fill=tk.X, pady=10)
+        
+        buttons = [
+            ("Start Diagnosis", self.start_diagnosis, 'primary'),
+            ("View Report", self.generate_report, 'info'),
+            ("Music Therapy", self.recommend_music, 'success'),
+            ("Find Hospitals", self.show_hospitals, 'warning'),
+            ("Exit", self.root.destroy, 'danger')
+        ]
+        
+        for text, command, style in buttons:
+            ttk.Button(
+                action_frame,
+                text=text,
+                command=command,
+                bootstyle=style
+            ).pack(side=tk.LEFT, padx=5)
+
+    def visualize_depression_level(self):
+        fig = plt.figure(figsize=(5, 3), dpi=100)
+        ax = fig.add_subplot(111)
+        
+        categories = ['Sadness', 'Sleep', 'Appetite', 'Concentration', 'Fatigue']
+        values = self.user_responses[-5:]  # Last 5 responses
+        
+        ax.bar(categories, values, color=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD'])
+        ax.set_ylim(0, 5)
+        ax.set_title('Depression Level Analysis')
+        ax.set_ylabel('Severity Level')
+        
+        # Embed plot in Tkinter
+        for widget in self.viz_frame.winfo_children():
+            widget.destroy()
+            
+        canvas = FigureCanvasTkAgg(fig, master=self.viz_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    def generate_report(self):
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        
+        # Report Header
+        pdf.cell(200, 10, txt="Mental Health Assessment Report", ln=1, align='C')
+        pdf.cell(200, 10, txt="--------------------------------", ln=1, align='C')
+        
+        # User Responses
+        pdf.cell(200, 10, txt="Assessment Responses:", ln=1)
+        for idx, response in enumerate(self.user_responses):
+            pdf.cell(200, 10, 
+                    txt=f"Question {idx+1}: {self.diagnosis_questions[idx]} - Score: {response}", 
+                    ln=1)
+        
+        # Visualization
+        plt.savefig("temp_chart.png")
+        pdf.image("temp_chart.png", x=10, y=100, w=180)
+        
+        # Recommendations
+        pdf.cell(200, 10, txt="Recommendations:", ln=1)
+        recommendations = [
+            "1. Practice daily mindfulness exercises",
+            "2. Maintain a regular sleep schedule",
+            "3. Engage in physical activity",
+            "4. Consider professional counseling"
+        ]
+        for rec in recommendations:
+            pdf.cell(200, 10, txt=rec, ln=1)
+        
+        # Save report
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF Files", "*.pdf")]
+        )
+        if filename:
+            pdf.output(filename)
+            self.show_message("Bot", f"Report saved successfully: {filename}")
+
+    def show_hospitals(self):
+        hospital_info = "\n\n".join([
+            f"🏥 {h['name']}\n📍 {h['address']}\n📞 {h['phone']}\nSpecialty: {h['specialty']}"
+            for h in self.hospitals
+        ])
+        self.show_typing_indicator(f"Mental Health Hospitals in Greater Noida:\n\n{hospital_info}")
+
+    # ... (Keep previous methods like process_input, handle_ai_response, etc.)
+
+    def handle_diagnosis(self, answer):
+        try:
+            score = int(answer)
+            if 1 <= score <= 5:
+                self.user_responses.append(score)
+                self.depression_score += score
+                self.current_question += 1
+                
+                if self.current_question < len(self.diagnosis_questions):
+                    self.show_typing_indicator(self.diagnosis_questions[self.current_question])
+                else:
+                    self.visualize_depression_level()
+                    self.show_results()
+            else:
+                self.show_typing_indicator("Please enter a number between 1-5")
+        except ValueError:
+            self.show_typing_indicator("Please enter a valid number")
+
+    def show_results(self):
+        total = self.depression_score
+        if total <= 10:
+            msg = "Your symptoms seem mild. Practice self-care! 🌼"
+        elif total <= 15:
+            msg = "Moderate symptoms detected. Consider professional help. 📞"
+        else:
+            msg = "Severe symptoms detected. Please consult a professional immediately. 🚨"
+            self.show_hospitals()
+        
+        msg += f"\n\nYour score: {total}/25"
+        self.show_typing_indicator(msg)
+        self.diagnosis_active = False
+
+    # ... (Other existing methods)
+
+if __name__ == "__main__":
+    root = ttk.Window()
+    bot = MentalHealthAIBot(root)
+    root.mainloop()
